@@ -141,7 +141,7 @@ if (!mounted) {
 
         connection1.alive = false;
 
-        return connection2.emit({
+        return connection1.emit({
           event: "get_partner",
         });
       }
