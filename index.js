@@ -1,6 +1,7 @@
 const Websocket = require("websocket").w3cwebsocket;
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const { Worker, receiveMessageOnPort } = require("node:worker_threads");
+const config = require("./config");
 
 const { port1: localPort, port2: workerPort } = new MessageChannel();
 
@@ -40,8 +41,10 @@ const websocketArgs = [
   },
 ];
 
+let mounted = false;
+
 const [bot1, bot2] = ["you", "me"].map((name) => {
-  const ws = new Websocket(...websocketArgs);
+  let ws = new Websocket(...websocketArgs);
   ws.emit = (json) => ws.send(JSON.stringify(json));
 
   return {
@@ -50,27 +53,34 @@ const [bot1, bot2] = ["you", "me"].map((name) => {
   };
 });
 
-process.stdin.on("data", (buffer) => {
-  const [who, message] = buffer
-    .toString("utf8")
-    .match(/^(\S+)\s(.*)/)
-    .slice(1);
+if (!mounted) {
+  mounted = true;
 
-  if (!message) {
-    return;
-  }
+  process.stdin.on("data", (buffer) => {
+    const [who, message] = buffer
+      .toString("utf8")
+      .match(/^(\S+)\s(.*)/)
+      .slice(1);
 
-  const isInterlocutor = who === "me";
+    if (!message) {
+      return;
+    }
 
-  const which = isInterlocutor ? bot1 : bot2;
+    const isInterlocutor = who === "me";
 
-  log(`${which.name} intercepted with "${message.trimEnd()}"`, isInterlocutor);
+    const which = isInterlocutor ? bot1 : bot2;
 
-  which.connection.emit({
-    event: "send_message",
-    message,
+    log(
+      `${which.name} intercepted with "${message.trimEnd()}"`,
+      isInterlocutor
+    );
+
+    which.connection.emit({
+      event: "send_message",
+      message,
+    });
   });
-});
+}
 
 [
   [bot1, bot2],
@@ -131,7 +141,7 @@ process.stdin.on("data", (buffer) => {
 
         connection1.alive = false;
 
-        return connection2.emit({
+        return connection1.emit({
           event: "get_partner",
         });
       }
