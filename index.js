@@ -2,19 +2,25 @@ const Websocket = require("websocket").w3cwebsocket;
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const { Worker, receiveMessageOnPort } = require("node:worker_threads");
 const config = require("./config");
+const { join } = require("node:path");
 
-const { port1: localPort, port2: workerPort } = new MessageChannel();
+const getProxy = () => {
+  const buffer = new Int32Array(new SharedArrayBuffer(4));
+  const { port1: localPort, port2: workerPort } = new MessageChannel();
 
-const buffer = new Int32Array(new SharedArrayBuffer(4));
+  new Worker("./fetcher.js", {
+    workerData: { buffer, port: workerPort },
+    transferList: [workerPort],
+  });
 
-new Worker("./fetcher.js", {
-  workerData: { buffer, port: workerPort },
-  transferList: [workerPort],
-});
+  Atomics.wait(buffer, 0, 0);
 
-Atomics.wait(buffer, 0, 0);
+  const { message: proxy } = receiveMessageOnPort(localPort);
 
-const { message: proxy } = receiveMessageOnPort(localPort);
+  console.info(`Fetched proxy ${proxy}`);
+
+  return proxy;
+};
 
 const log = (message, isInterlocutor) => {
   const date = `[${new Date().toISOString()}] `;
@@ -26,7 +32,7 @@ const log = (message, isInterlocutor) => {
   return console.log(formatted);
 };
 
-const websocketArgs = [
+const getWebsocketArgs = () => [
   "ws://pogovorisomnoi.ru:8008/chat",
   null,
   null,
@@ -36,7 +42,7 @@ const websocketArgs = [
   null,
   {
     tlsOptions: {
-      agent: new HttpsProxyAgent(proxy),
+      agent: new HttpsProxyAgent(getProxy()),
     },
   },
 ];
@@ -44,8 +50,31 @@ const websocketArgs = [
 let mounted = false;
 
 const [bot1, bot2] = ["you", "me"].map((name) => {
-  let ws = new Websocket(...websocketArgs);
-  ws.emit = (json) => ws.send(JSON.stringify(json));
+  let ws = new Websocket(...getWebsocketArgs());
+  ws.emit = (json) => {
+    try {
+      ws.send(JSON.stringify(json));
+    } catch {
+      console.info("Reconnecting...");
+    }
+  };
+
+  const rotate = () => {
+    const fresh = new Websocket(...getWebsocketArgs());
+
+    fresh.emit = (json) => fresh.send(JSON.stringify(json));
+
+    fresh.rotate = rotate;
+    fresh.onopen = ws.onopen;
+    fresh.onclose = ws.onclose;
+    fresh.onerror = ws.onerror;
+    fresh.onmessage = ws.onmessage;
+
+    ws.close();
+    ws = fresh;
+  };
+
+  ws.rotate = rotate;
 
   return {
     name,
@@ -112,6 +141,12 @@ if (!mounted) {
       const { event, mine, message } = JSON.parse(data);
 
       if (event === "user_registered") {
+        const joinDelay = config.traits[name]?.join.delay;
+
+        if (joinDelay) {
+          await new Promise((resolve) => setTimeout(resolve, joinDelay));
+        }
+
         return connection1.emit({
           event: "get_partner",
         });
@@ -140,6 +175,10 @@ if (!mounted) {
         log(`${name} ${event}`, isInterlocutor);
 
         connection1.alive = false;
+
+        if (config.proxy.rotate) {
+          await connection1.rotate();
+        }
 
         return connection1.emit({
           event: "get_partner",
