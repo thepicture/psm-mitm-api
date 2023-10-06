@@ -2,7 +2,6 @@ const Websocket = require("websocket").w3cwebsocket;
 const { HttpsProxyAgent } = require("https-proxy-agent");
 const { Worker, receiveMessageOnPort } = require("node:worker_threads");
 const config = require("./config");
-const { join } = require("node:path");
 
 const getProxy = () => {
   const buffer = new Int32Array(new SharedArrayBuffer(4));
@@ -95,13 +94,15 @@ if (!mounted) {
       return;
     }
 
-    const isInterlocutor = who === "me";
+    const isMe = who === "me";
 
-    const which = isInterlocutor ? bot1 : bot2;
+    const which = isMe ? bot1 : bot2;
 
     log(
-      `${which.name} intercepted with "${message.trimEnd()}"`,
-      isInterlocutor
+      `${
+        which.name == "you" ? "me" : "you"
+      } intercepted with "${message.trimEnd()}"`,
+      isMe
     );
 
     which.connection.emit({
