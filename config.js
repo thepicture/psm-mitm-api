@@ -10,5 +10,10 @@ module.exports = {
         delay: 3200,
       },
     },
+    me: {
+      join: {
+        delay: 3200,
+      },
+    },
   },
 };
