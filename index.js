@@ -3,6 +3,9 @@ const { HttpsProxyAgent } = require("https-proxy-agent");
 const { Worker, receiveMessageOnPort } = require("node:worker_threads");
 const config = require("./config");
 
+const sleep = (milliseconds) =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
 const getProxy = () => {
   const buffer = new Int32Array(new SharedArrayBuffer(4));
   const { port1: localPort, port2: workerPort } = new MessageChannel();
@@ -112,12 +115,15 @@ if (!mounted) {
   });
 }
 
+let lastJoinedAt = -Infinity;
+
 [
   [bot1, bot2],
   [bot2, bot1],
 ].forEach(
   ([{ connection: connection1, name }, { connection: connection2 }]) => {
     const toSend = [];
+    const joinDelay = config.traits[name]?.join.delay || 0;
 
     let heartbeat;
 
@@ -142,10 +148,8 @@ if (!mounted) {
       const { event, mine, message } = JSON.parse(data);
 
       if (event === "user_registered") {
-        const joinDelay = config.traits[name]?.join.delay;
-
         if (joinDelay) {
-          await new Promise((resolve) => setTimeout(resolve, joinDelay));
+          await sleep(joinDelay);
         }
 
         return connection1.emit({
@@ -155,6 +159,26 @@ if (!mounted) {
 
       if (event === "joined_to_conversation") {
         log(`${name} ${event}`, isInterlocutor);
+
+        const now = Date.now();
+
+        if (Math.abs(lastJoinedAt - now) < 10) {
+          log(`recursion, terminating after ${joinDelay}ms...`, isInterlocutor);
+
+          await sleep(joinDelay);
+
+          connection1.emit({
+            event: "get_partner",
+          });
+
+          connection2.emit({
+            event: "get_partner",
+          });
+
+          return;
+        }
+
+        lastJoinedAt = now;
 
         connection1.alive = true;
 
