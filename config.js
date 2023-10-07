@@ -9,11 +9,31 @@ module.exports = {
       join: {
         delay: 3200,
       },
+      replacers: [
+        {
+          match: /м/g,
+          replacer: "ж",
+        },
+        {
+          match: /М/g,
+          replacer: "Ж",
+        },
+      ],
     },
     me: {
       join: {
         delay: 3200,
       },
+      replacers: [
+        {
+          match: /м/g,
+          replacer: "ж",
+        },
+        {
+          match: /М/g,
+          replacer: "Ж",
+        },
+      ],
     },
   },
 };

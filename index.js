@@ -52,8 +52,20 @@ const getWebsocketArgs = () => [
 let mounted = false;
 
 const [bot1, bot2] = ["you", "me"].map((name) => {
+  const applyReplaceIfNeeded = (json) => {
+    const { replacers } = config.traits?.[name] ?? {};
+
+    if (json.event === "send_message" && replacers) {
+      replacers.forEach(({ match, replacer }) => {
+        json.message = json.message.replace(match, replacer);
+      });
+    }
+  };
+
   let ws = new Websocket(...getWebsocketArgs());
   ws.emit = (json) => {
+    applyReplaceIfNeeded(json);
+
     try {
       ws.send(JSON.stringify(json));
     } catch {
@@ -64,7 +76,11 @@ const [bot1, bot2] = ["you", "me"].map((name) => {
   const rotate = () => {
     const fresh = new Websocket(...getWebsocketArgs());
 
-    fresh.emit = (json) => fresh.send(JSON.stringify(json));
+    fresh.emit = (json) => {
+      applyReplaceIfNeeded(json);
+
+      return fresh.send(JSON.stringify(json));
+    };
 
     fresh.rotate = rotate;
     fresh.onopen = ws.onopen;
